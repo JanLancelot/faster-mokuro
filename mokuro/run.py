@@ -121,7 +121,7 @@ def run(
 
     logger.info("Scanning paths...")
 
-    # Forgiving parser: extract single-dash flags and auto-join unquoted paths with spaces
+    # Normalize CLI flags and aliases
     raw_paths = []
     for p in paths:
         if isinstance(p, (list, tuple)):
@@ -163,7 +163,7 @@ def run(
         else:
             filtered_paths.append(p)
 
-    # Reconstruct unquoted space-split paths (e.g. ['manga/チェンソーマン', 'v24'])
+    # Recombine unquoted paths that contain spaces
     resolved_paths = []
     i = 0
     while i < len(filtered_paths):

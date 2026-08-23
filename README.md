@@ -1,33 +1,24 @@
 # faster-mokuro
 
-A performance-focused fork of [mokuro](https://github.com/kha-white/mokuro) with batched OCR inference, parallel image prefetching, and Apple Silicon (MPS) optimizations.
+A fast, streamlined fork of [mokuro](https://github.com/kha-white/mokuro) with batched OCR inference, Apple Silicon (MPS) acceleration, and one-click single-file CBZ packaging.
 
-Read Japanese manga with selectable text inside a browser.
+Read Japanese manga with selectable text in your browser and look up words with pop-up dictionaries like [Yomitan](https://github.com/themoeway/yomitan).
 
-**See demo: https://kha-white.github.io/manga-demo**
+**Demo:** https://kha-white.github.io/manga-demo
 
 https://user-images.githubusercontent.com/22717958/164993274-3e8d1650-9be3-457d-84cb-f92f9598cd5a.mp4
 
-<sup>Demo contains excerpt from [Manga109-s dataset](http://www.manga109.org/en/download_s.html). うちの猫’ず日記 © がぁさん</sup>
-
-mokuro is aimed towards Japanese learners who want to read manga in Japanese with a pop-up dictionary like [Yomitan](https://github.com/themoeway/yomitan).
-It works like this:
-1. Perform text detection and OCR for each page.
-2. After processing a whole volume, generate a `.mokuro` file containing OCR results and metadata. All processing is done offline.
-3. Load the `.mokuro` file together with manga images in [web reader](https://reader.mokuro.app/), which serves both as a reader and a catalog for processed series.
-
-mokuro uses [comic-text-detector](https://github.com/dmMaze/comic-text-detector) for text detection and [manga-ocr](https://github.com/kha-white/manga-ocr) for OCR.
+<sup>Demo excerpt from [Manga109-s dataset](http://www.manga109.org/en/download_s.html). うちの猫’ず日記 © がぁさん</sup>
 
 ---
 
 ## What's new in faster-mokuro
 
-This fork focuses on processing throughput and hardware utilization:
-
-- **Batched OCR Inference**: The original implementation passed text crops to `manga-ocr` one by one (`batch_size=1`). We batch crops across each page (default: 16), which drastically cuts kernel dispatch overhead on CUDA and Apple Silicon (MPS).
-- **Parallel Image Prefetching**: Disk I/O and image decoding run on background worker threads, overlapping CPU work with GPU inference.
-- **Inference Mode & Bounded Decoding**: Text recognition runs inside `torch.inference_mode()` with bounded beam generation steps (`max_length=96`), speeding up autoregressive decoding without affecting output accuracy.
-- **Apple Silicon Support**: Native MPS device selection and acceleration out of the box on macOS.
+- **Batched OCR Inference**: Batches crop recognition per page (`batch_size=16` by default), drastically reducing kernel dispatch overhead on Apple Silicon (MPS) and CUDA.
+- **Parallel Image Prefetching**: Background image decoding overlaps CPU disk I/O with GPU inference.
+- **Single-File CBZ Output**: Embeds `.mokuro` metadata directly into `.cbz` archives (`--bundle`, `--single_file`) so you get one clean file without loose metadata or scratch `_ocr/` folders.
+- **OS Right-Click Integration**: Process manga directly from macOS Finder (Quick Actions), Windows Explorer, or Linux file managers with native desktop notifications.
+- **Bounded Decoding**: Runs inside `torch.inference_mode()` with bounded beam generation steps (`max_length=96`), speeding up autoregressive decoding without affecting output accuracy.
 
 ---
 
@@ -42,92 +33,78 @@ git submodule update --init --recursive
 pip install -e .
 ```
 
-If you want GPU acceleration, ensure you have PyTorch installed for your platform:
-- **CUDA (NVIDIA / Windows / Linux)**: See [PyTorch get-started](https://pytorch.org/get-started/locally/)
-- **Apple Silicon (macOS)**: Supported natively via PyTorch MPS backend
+### Hardware Acceleration
+- **Apple Silicon (macOS)**: Supported natively out of the box via PyTorch MPS backend.
+- **CUDA (NVIDIA / Windows / Linux)**: Install PyTorch with CUDA support from [pytorch.org](https://pytorch.org/get-started/locally/).
 
 ---
 
 ## Usage
 
-### Run on one volume
+### Single-File CBZ Bundling
+
+Create self-contained `.cbz` files with embedded OCR data that open directly in web readers without loose files:
 
 ```bash
-mokuro /path/to/manga/vol1
+# Bundle an image folder into a single .cbz with OCR embedded
+mokuro --bundle "manga/Chainsaw Man vol 01"
+
+# Process an existing .cbz file in-place and clean up loose cache
+mokuro --single_file "manga/vol1.cbz"
 ```
 
-If your path contains spaces:
+### Standard Processing
 
 ```bash
-mokuro "/path/to/manga/volume 1"
-```
+# Process one volume
+mokuro path/to/manga/vol1
 
-### Run on multiple volumes
+# Process multiple volumes
+mokuro path/to/vol1 path/to/vol2 path/to/vol3
 
-```bash
-mokuro /path/to/manga/vol1 /path/to/manga/vol2 /path/to/manga/vol3
-```
-
-### Run on a directory containing multiple volumes
-
-```bash
+# Scan and process all volumes inside a parent directory
 mokuro --parent_dir manga_title/
 ```
 
-### One-Click OS Right-Click Integration (Finder / Explorer)
+### One-Click Right-Click Processing (Finder / Explorer)
 
-Process manga without touching the terminal:
+Process manga directly from your file manager without opening a terminal:
 
 1. **Install shortcut once:**
    ```bash
    mokuro --install_shortcut
    ```
-
-2. **Process your manga:**
-   - **macOS**: Right-click any manga folder, `.cbz`, or `.zip` file in Finder ➔ **Quick Actions** ➔ **Process with Mokuro**.
-   - **Windows**: Right-click any manga folder, `.cbz`, or `.zip` file ➔ **Process with Mokuro**.
+2. **Right-click your manga:**
+   - **macOS**: Right-click any folder or `.cbz` in Finder ➔ **Quick Actions** ➔ **Process with Mokuro**.
+   - **Windows**: Right-click any folder or `.cbz` ➔ **Process with Mokuro**.
    - **Linux (Nautilus / Nemo)**: Right-click ➔ **Scripts** ➔ **Process with Mokuro**.
 
-Mokuro will process the volume in the background and send a native desktop notification when it is finished.
+Mokuro will process the volume in the background and send a native desktop notification when finished.
 
 To uninstall:
 ```bash
 mokuro --uninstall_shortcut
 ```
 
-### Single-File Output (.cbz)
-
-To keep your manga folder clean and have a single, self-contained file containing both scans and OCR data:
-
-- **From an existing `.cbz` or `.zip`:**
-  Mokuro automatically embeds the `.mokuro` metadata directly into the archive. To remove loose files and leave only the single `.cbz`:
-  ```bash
-  mokuro --single_file vol1.cbz
-  ```
-- **From a folder:**
-  Package a scanned folder and its OCR results directly into a single `.cbz` file:
-  ```bash
-  mokuro --bundle /path/to/manga/vol1
-  ```
-
 ---
 
-### Options
+## Options
 
 ```
---single_file: Output a single self-contained .cbz archive with embedded .mokuro (cleans up loose files).
---bundle: Bundle directory inputs into a single-file .cbz archive with embedded .mokuro.
+--bundle: Bundle directory inputs into a single-file .cbz archive with embedded .mokuro and clean up cache.
+--single_file: Output a single self-contained .cbz archive with embedded .mokuro (removes loose metadata/cache).
+--keep_source: When bundling a directory, keep the original image folder alongside the .cbz (default: True).
 --install_shortcut: Install right-click context menu / Quick Action shortcuts in Finder / Explorer.
 --uninstall_shortcut: Remove right-click context menu / Quick Action shortcuts.
 --notify: Run in background and show desktop notifications on start and completion.
+--ocr_batch_size: Batch size for OCR inference on GPU/MPS (default: 16).
 --pretrained_model_name_or_path: Name or path of the manga-ocr model.
---force_cpu: Force the use of CPU even if CUDA/MPS is available.
+--force_cpu: Force CPU execution even if CUDA/MPS is available.
 --disable_confirmation: Disable confirmation prompt.
 --disable_ocr: Disable OCR processing (generate layout only).
 --ignore_errors: Continue processing volumes even if an error occurs.
 --no_cache: Do not use cached OCR results from previous runs.
 --unzip: Extract volumes in zip/cbz format in their original location.
---ocr_batch_size: Batch size for OCR inference on GPU/MPS (default: 16).
 --legacy_html: Enable legacy HTML output (default: False).
 --as_one_file: For legacy HTML, embed CSS/JS inside HTML.
 --version: Print version and exit.
@@ -135,14 +112,16 @@ To keep your manga folder clean and have a single, self-contained file containin
 
 ---
 
-## See also
+## Readers & Tools
 
-- [mokuro-reader](https://github.com/Gnathonic/mokuro-reader), a web reader for mokuro
-- [Mokuro2Pdf](https://github.com/Kartoffel0/Mokuro2Pdf), CLI Ruby script to generate PDF files with selectable text
-- [Xelieu's guide](https://lazyguidejp.github.io/jp-lazy-guide/setupMangaOnPC/), a comprehensive guide on reading and mining workflows
+- [reader.mokuro.app](https://reader.mokuro.app/) / [mokuro-reader](https://github.com/Gnathonic/mokuro-reader) — Web readers with selectable text and pop-up dictionary support
+- [Mokuro2Pdf](https://github.com/Kartoffel0/Mokuro2Pdf) — Convert mokuro output to PDF with selectable text
+- [Yomitan](https://github.com/themoeway/yomitan) — Pop-up dictionary browser extension for Japanese text lookups
+- [Xelieu's Guide](https://lazyguidejp.github.io/jp-lazy-guide/setupMangaOnPC/) — Comprehensive guide on Japanese manga reading and Anki mining setups
 
 ## Acknowledgments
 
 - Original project by [kha-white/mokuro](https://github.com/kha-white/mokuro)
-- [comic-text-detector](https://github.com/dmMaze/comic-text-detector)
-- [Manga-Text-Segmentation](https://github.com/juvian/Manga-Text-Segmentation)
+- [manga-ocr](https://github.com/kha-white/manga-ocr) by kha-white
+- [comic-text-detector](https://github.com/dmMaze/comic-text-detector) by dmMaze
+- [Manga-Text-Segmentation](https://github.com/juvian/Manga-Text-Segmentation) by juvian
