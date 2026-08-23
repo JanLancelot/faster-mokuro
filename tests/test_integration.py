@@ -108,3 +108,56 @@ def test_run_with_notifications_error():
             run_with_notifications("/fake/path/vol1")
         assert mock_notify.call_count == 2
         assert "Failed" in mock_notify.call_args_list[1][0][1]
+
+
+def test_embed_mokuro_in_archive():
+    import zipfile
+    from mokuro.utils import embed_mokuro_in_archive
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        zip_path = tmp_path / "test.cbz"
+        mokuro_path = tmp_path / "test.mokuro"
+
+        # Create a sample cbz
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("001.jpg", b"fake_image_data")
+
+        mokuro_path.write_text('{"title": "Test", "pages": []}', encoding="utf-8")
+
+        embed_mokuro_in_archive(zip_path, mokuro_path)
+
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            namelist = zf.namelist()
+            assert "test.mokuro" in namelist
+            assert "index.mokuro" in namelist
+            assert zf.read("test.mokuro") == b'{"title": "Test", "pages": []}'
+
+
+def test_bundle_to_cbz():
+    import zipfile
+    from mokuro.utils import bundle_to_cbz
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        vol_dir = tmp_path / "vol1"
+        vol_dir.mkdir()
+        (vol_dir / "001.jpg").write_bytes(b"image1")
+        (vol_dir / "002.png").write_bytes(b"image2")
+        (vol_dir / "ignore.txt").write_bytes(b"ignore")
+
+        mokuro_path = tmp_path / "vol1.mokuro"
+        mokuro_path.write_text('{"volume": "vol1"}', encoding="utf-8")
+
+        cbz_out = bundle_to_cbz(vol_dir, mokuro_path)
+        assert cbz_out.is_file()
+        assert cbz_out.suffix == ".cbz"
+
+        with zipfile.ZipFile(cbz_out, "r") as zf:
+            namelist = zf.namelist()
+            assert "001.jpg" in namelist
+            assert "002.png" in namelist
+            assert "ignore.txt" not in namelist
+            assert "vol1.mokuro" in namelist
+            assert "index.mokuro" in namelist
+

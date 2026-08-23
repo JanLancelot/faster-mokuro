@@ -65,3 +65,46 @@ def unzip(path_src: Path, path_dst: Path, correct_duplicated_root=True):
                     for item in extracted_dir.iterdir():
                         shutil.move(str(item), str(path_dst))
                     extracted_dir.rmdir()
+
+
+def embed_mokuro_in_archive(archive_path: Path, mokuro_path: Path):
+    """
+    Embed the .mokuro metadata directly into a .cbz / .zip archive.
+    Writes both the named .mokuro file and index.mokuro for maximum reader compatibility.
+    """
+    if not archive_path.is_file() or not mokuro_path.is_file():
+        return
+
+    mokuro_bytes = mokuro_path.read_bytes()
+    mokuro_name = mokuro_path.name
+
+    with zipfile.ZipFile(archive_path, "a") as zf:
+        existing_names = set(zf.namelist())
+        if mokuro_name not in existing_names:
+            zf.writestr(mokuro_name, mokuro_bytes)
+        if "index.mokuro" not in existing_names and mokuro_name != "index.mokuro":
+            zf.writestr("index.mokuro", mokuro_bytes)
+
+
+def bundle_to_cbz(dir_path: Path, mokuro_path: Path, dst_path: Path = None) -> Path:
+    """
+    Bundle a manga directory and its .mokuro metadata into a single self-contained .cbz archive.
+    """
+    if dst_path is None:
+        dst_path = dir_path.with_suffix(".cbz")
+
+    from natsort import natsorted
+
+    with zipfile.ZipFile(dst_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for f_path in natsorted(dir_path.rglob("*")):
+            if f_path.is_file() and f_path.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp", ".avif"):
+                rel = f_path.relative_to(dir_path)
+                zf.write(f_path, rel)
+
+        if mokuro_path.is_file():
+            mokuro_bytes = mokuro_path.read_bytes()
+            zf.writestr(mokuro_path.name, mokuro_bytes)
+            if mokuro_path.name != "index.mokuro":
+                zf.writestr("index.mokuro", mokuro_bytes)
+
+    return dst_path
