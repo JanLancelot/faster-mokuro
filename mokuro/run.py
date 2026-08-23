@@ -29,7 +29,7 @@ def run(
     ocr_batch_size: int = 16,
     single_file: bool = False,
     bundle: bool = False,
-    keep_source: bool = False,
+    keep_source: bool = True,
     install_shortcut: bool = False,
     uninstall_shortcut: bool = False,
     notify: bool = False,
@@ -52,8 +52,8 @@ def run(
         ocr_batch_size: Batch size for OCR inference.
         version: Print the version of mokuro and exit.
         single_file: Output a single self-contained .cbz archive with embedded .mokuro (removes loose metadata/cache).
-        bundle: Bundle directory inputs into a single-file .cbz archive with embedded .mokuro and clean up loose scans/cache.
-        keep_source: When bundling a directory, keep the original loose images folder alongside the .cbz.
+        bundle: Bundle directory inputs into a single-file .cbz archive with embedded .mokuro and clean up loose metadata/cache.
+        keep_source: When bundling a directory, keep the original loose images folder alongside the .cbz (default: True).
         install_shortcut: Install right-click context menu / Quick Action shortcuts in Finder / Explorer.
         uninstall_shortcut: Remove right-click context menu / Quick Action shortcuts.
         notify: Show desktop notifications on start and completion.
@@ -139,6 +139,8 @@ def run(
             single_file = True
         elif p_str in ("-keep_source", "-k", "--keep_source", "--keep-source"):
             keep_source = True
+        elif p_str in ("-delete_source", "--delete_source", "--delete-source", "-no_keep_source", "--no-keep-source"):
+            keep_source = False
         elif p_str in ("-notify", "-n", "--notify"):
             notify = True
         elif p_str in ("-disable_confirmation", "-y", "-yes", "--yes", "--disable_confirmation", "--disable-confirmation"):

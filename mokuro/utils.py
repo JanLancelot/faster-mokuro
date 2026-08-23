@@ -69,7 +69,7 @@ def unzip(path_src: Path, path_dst: Path, correct_duplicated_root=True):
 
 def embed_mokuro_in_archive(archive_path: Path, mokuro_path: Path, entry_name: str = "index.mokuro"):
     """
-    Embed the .mokuro metadata directly into a .cbz / .zip archive without creating duplicates.
+    Embed the .mokuro metadata directly into a .cbz / .zip archive.
     Replaces any existing .mokuro metadata in the archive cleanly.
     """
     if not archive_path.is_file() or not mokuro_path.is_file():
@@ -101,7 +101,7 @@ def embed_mokuro_in_archive(archive_path: Path, mokuro_path: Path, entry_name: s
 
 def bundle_to_cbz(dir_path: Path, mokuro_path: Path, dst_path: Path = None) -> Path:
     """
-    Bundle a manga directory and its .mokuro metadata into a single self-contained .cbz archive without duplicates.
+    Bundle a manga directory and its .mokuro metadata into a single self-contained .cbz archive.
     """
     if dst_path is None:
         dst_path = dir_path.with_suffix(".cbz")
