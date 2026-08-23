@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from json import JSONDecodeError
 
 from loguru import logger
@@ -5,7 +6,7 @@ from tqdm import tqdm
 
 from mokuro import __version__
 from mokuro.manga_page_ocr import MangaPageOcr
-from mokuro.utils import dump_json, load_json
+from mokuro.utils import dump_json, load_json, imread
 from mokuro.volume import Volume
 
 
@@ -28,7 +29,7 @@ class MokuroGenerator:
                 **self.kwargs,
             )
 
-    def process_volume(self, volume: Volume, ignore_errors=False, no_cache=False):
+    def process_volume(self, volume: Volume, ignore_errors=False, no_cache=False, prefetch_workers=4):
         volume.path_ocr_cache.mkdir(parents=True, exist_ok=True)
 
         if volume.mokuro_data is not None:
@@ -43,26 +44,39 @@ class MokuroGenerator:
 
         img_paths = volume.get_img_paths()
 
-        for img_path_rel in tqdm(img_paths.values(), desc="Processing pages..."):
+        items_to_process = []
+        for img_path_rel in img_paths.values():
+            json_path = (volume.path_ocr_cache / img_path_rel).with_suffix(".json")
+
             try:
-                json_path = (volume.path_ocr_cache / img_path_rel).with_suffix(".json")
+                load_json(json_path)
+                already_processed = True
+            except (FileNotFoundError, JSONDecodeError, UnicodeDecodeError):
+                already_processed = False
 
-                try:
-                    load_json(json_path)
-                    already_processed = True
-                except (FileNotFoundError, JSONDecodeError, UnicodeDecodeError):
-                    already_processed = False
+            if no_cache or not already_processed:
+                items_to_process.append((img_path_rel, json_path))
 
-                if no_cache or not already_processed:
-                    self.init_models()
-                    result = self.mpocr(volume.path_in / img_path_rel)
-                    json_path.parent.mkdir(parents=True, exist_ok=True)
-                    dump_json(result, json_path)
-            except Exception as e:
-                if ignore_errors:
-                    logger.error(e)
-                else:
-                    raise e
+        if items_to_process:
+            self.init_models()
+
+            with ThreadPoolExecutor(max_workers=prefetch_workers) as executor:
+                futures = [
+                    executor.submit(lambda rel, dst: (rel, dst, imread(volume.path_in / rel)), rel_p, j_p)
+                    for rel_p, j_p in items_to_process
+                ]
+
+                for fut in tqdm(futures, desc="Processing pages..."):
+                    try:
+                        img_path_rel, json_path, img = fut.result()
+                        result = self.mpocr(img)
+                        json_path.parent.mkdir(parents=True, exist_ok=True)
+                        dump_json(result, json_path)
+                    except Exception as e:
+                        if ignore_errors:
+                            logger.error(e)
+                        else:
+                            raise e
 
         self.generate_mokuro_file(volume, ignore_errors=ignore_errors)
 
