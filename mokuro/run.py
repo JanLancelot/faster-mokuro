@@ -27,6 +27,7 @@ def run(
     legacy_html: bool = False,
     as_one_file: bool = True,
     ocr_batch_size: int = 16,
+    version: bool = False,
     single_file: bool = False,
     bundle: bool = False,
     keep_source: bool = True,
