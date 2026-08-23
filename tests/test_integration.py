@@ -161,3 +161,31 @@ def test_bundle_to_cbz():
             assert "vol1.mokuro" in namelist
             assert "index.mokuro" in namelist
 
+
+def test_cleanup_volume_mess():
+    from mokuro.run import _cleanup_volume_mess
+    from mokuro.volume import Volume
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        vol_dir = tmp_path / "vol1"
+        vol_dir.mkdir()
+        (vol_dir / "001.jpg").write_bytes(b"image")
+
+        mokuro_file = tmp_path / "vol1.mokuro"
+        mokuro_file.write_text('{"pages": []}', encoding="utf-8")
+
+        ocr_cache_dir = tmp_path / "_ocr" / "vol1"
+        ocr_cache_dir.mkdir(parents=True)
+        (ocr_cache_dir / "001.json").write_text('{}', encoding="utf-8")
+
+        volume = Volume(vol_dir)
+
+        # Run mess cleanup with remove_source_dir=True
+        _cleanup_volume_mess(volume, remove_source_dir=True)
+
+        assert not mokuro_file.exists()
+        assert not ocr_cache_dir.exists()
+        assert not (tmp_path / "_ocr").exists()
+        assert not vol_dir.exists()
+

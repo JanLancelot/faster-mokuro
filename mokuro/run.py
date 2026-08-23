@@ -27,9 +27,9 @@ def run(
     legacy_html: bool = False,
     as_one_file: bool = True,
     ocr_batch_size: int = 16,
-    version: bool = False,
     single_file: bool = False,
     bundle: bool = False,
+    keep_source: bool = False,
     install_shortcut: bool = False,
     uninstall_shortcut: bool = False,
     notify: bool = False,
@@ -52,7 +52,8 @@ def run(
         ocr_batch_size: Batch size for OCR inference.
         version: Print the version of mokuro and exit.
         single_file: Output a single self-contained .cbz archive with embedded .mokuro (removes loose metadata/cache).
-        bundle: Bundle directory inputs into a single-file .cbz archive with embedded .mokuro.
+        bundle: Bundle directory inputs into a single-file .cbz archive with embedded .mokuro and clean up loose scans/cache.
+        keep_source: When bundling a directory, keep the original loose images folder alongside the .cbz.
         install_shortcut: Install right-click context menu / Quick Action shortcuts in Finder / Explorer.
         uninstall_shortcut: Remove right-click context menu / Quick Action shortcuts.
         notify: Show desktop notifications on start and completion.
@@ -136,6 +137,8 @@ def run(
             bundle = True
         elif p_str in ("-single_file", "-s", "--single_file", "--single-file"):
             single_file = True
+        elif p_str in ("-keep_source", "-k", "--keep_source", "--keep-source"):
+            keep_source = True
         elif p_str in ("-notify", "-n", "--notify"):
             notify = True
         elif p_str in ("-disable_confirmation", "-y", "-yes", "--yes", "--disable_confirmation", "--disable-confirmation"):
@@ -266,20 +269,14 @@ def run(
                     orig_archive = archive_paths[0]
                     embed_mokuro_in_archive(orig_archive, volume.path_mokuro)
                     logger.info(f"Embedded OCR metadata inside {orig_archive}")
-                    if single_file:
-                        if volume.path_mokuro.is_file():
-                            volume.path_mokuro.unlink()
-                        if volume.path_ocr_cache.is_dir():
-                            shutil.rmtree(volume.path_ocr_cache, ignore_errors=True)
+                    if single_file or bundle:
+                        _cleanup_volume_mess(volume, remove_source_dir=False)
 
                 elif (single_file or bundle) and volume.path_in.is_dir():
                     cbz_path = bundle_to_cbz(volume.path_in, volume.path_mokuro)
                     logger.info(f"Bundled volume into single file: {cbz_path}")
-                    if single_file:
-                        if volume.path_mokuro.is_file():
-                            volume.path_mokuro.unlink()
-                        if volume.path_ocr_cache.is_dir():
-                            shutil.rmtree(volume.path_ocr_cache, ignore_errors=True)
+                    if cbz_path.is_file() and cbz_path.stat().st_size > 0:
+                        _cleanup_volume_mess(volume, remove_source_dir=not keep_source)
 
             except Exception:
                 logger.exception(f"Error while processing {volume.path_in}")
@@ -288,6 +285,32 @@ def run(
 
         logger.info(f"Processed successfully: {num_sucessful}/{len(vc)}")
         return num_sucessful
+
+
+def _cleanup_volume_mess(volume: Volume, remove_source_dir: bool = False):
+    """Remove loose .mokuro file, _ocr cache, and optionally source directory."""
+    if volume.path_mokuro.is_file():
+        try:
+            volume.path_mokuro.unlink()
+            logger.debug(f"Removed loose metadata: {volume.path_mokuro}")
+        except OSError:
+            pass
+
+    if volume.path_ocr_cache.is_dir():
+        shutil.rmtree(volume.path_ocr_cache, ignore_errors=True)
+        logger.debug(f"Removed OCR cache: {volume.path_ocr_cache}")
+
+    parent_ocr = volume.path_ocr_cache.parent
+    if parent_ocr.is_dir():
+        try:
+            if not any(parent_ocr.iterdir()):
+                parent_ocr.rmdir()
+        except OSError:
+            pass
+
+    if remove_source_dir and volume.path_in.is_dir():
+        shutil.rmtree(volume.path_in, ignore_errors=True)
+        logger.info(f"Cleaned up source scans folder: {volume.path_in}")
 
 
 if __name__ == "__main__":
