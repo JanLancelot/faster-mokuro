@@ -24,12 +24,13 @@ def run(
     ignore_errors: bool = False,
     no_cache: bool = False,
     unzip: bool = False,
-    legacy_html: bool = True,
+    legacy_html: bool = False,
     as_one_file: bool = True,
     ocr_batch_size: int = 16,
     version: bool = False,
     single_file: bool = False,
     bundle: bool = False,
+    keep_source: bool = True,
     install_shortcut: bool = False,
     uninstall_shortcut: bool = False,
     notify: bool = False,
@@ -47,12 +48,13 @@ def run(
         ignore_errors: Continue processing volumes even if an error occurs.
         no_cache: Do not use cached OCR results from previous runs (_ocr directories).
         unzip: Extract volumes in zip/cbz format in their original location.
-        legacy_html: Enable legacy HTML output. If True, acts as if --unzip is True.
+        legacy_html: Enable legacy HTML output (default: False). If True, acts as if --unzip is True.
         as_one_file: Applies only to legacy HTML. If False, generate separate CSS and JS files instead of embedding them in the HTML file.
         ocr_batch_size: Batch size for OCR inference.
         version: Print the version of mokuro and exit.
         single_file: Output a single self-contained .cbz archive with embedded .mokuro (removes loose metadata/cache).
-        bundle: Bundle directory inputs into a single-file .cbz archive with embedded .mokuro.
+        bundle: Bundle directory inputs into a single-file .cbz archive with embedded .mokuro and clean up loose metadata/cache.
+        keep_source: When bundling a directory, keep the original loose images folder alongside the .cbz (default: True).
         install_shortcut: Install right-click context menu / Quick Action shortcuts in Finder / Explorer.
         uninstall_shortcut: Remove right-click context menu / Quick Action shortcuts.
         notify: Show desktop notifications on start and completion.
@@ -61,6 +63,23 @@ def run(
     if version:
         print(f"{__version__}")
         return
+
+    # Handle Python Fire treating flags like -bundle / --bundle as consuming the next path argument
+    if isinstance(bundle, (str, Path)):
+        paths = (bundle,) + tuple(paths)
+        bundle = True
+    if isinstance(single_file, (str, Path)):
+        paths = (single_file,) + tuple(paths)
+        single_file = True
+    if isinstance(notify, (str, Path)):
+        paths = (notify,) + tuple(paths)
+        notify = True
+    if isinstance(install_shortcut, (str, Path)):
+        paths = (install_shortcut,) + tuple(paths)
+        install_shortcut = True
+    if isinstance(uninstall_shortcut, (str, Path)):
+        paths = (uninstall_shortcut,) + tuple(paths)
+        uninstall_shortcut = True
 
     if install_shortcut:
         from mokuro.integration import install_shortcuts
@@ -102,10 +121,76 @@ def run(
 
     logger.info("Scanning paths...")
 
-    paths_ = []
-    for path in paths:
-        path_normalized = Path(str(path)).expanduser().absolute()
+    # Forgiving parser: extract single-dash flags and auto-join unquoted paths with spaces
+    raw_paths = []
+    for p in paths:
+        if isinstance(p, (list, tuple)):
+            for sub_p in p:
+                if sub_p is not None:
+                    raw_paths.append(str(sub_p))
+        elif p is not None:
+            raw_paths.append(str(p))
 
+    filtered_paths = []
+    for p in raw_paths:
+        p_str = p.strip()
+        if p_str in ("-bundle", "-b", "--bundle"):
+            bundle = True
+        elif p_str in ("-single_file", "-s", "--single_file", "--single-file"):
+            single_file = True
+        elif p_str in ("-keep_source", "-k", "--keep_source", "--keep-source"):
+            keep_source = True
+        elif p_str in ("-delete_source", "--delete_source", "--delete-source", "-no_keep_source", "--no-keep-source"):
+            keep_source = False
+        elif p_str in ("-notify", "-n", "--notify"):
+            notify = True
+        elif p_str in ("-disable_confirmation", "-y", "-yes", "--yes", "--disable_confirmation", "--disable-confirmation"):
+            disable_confirmation = True
+        elif p_str in ("-disable_ocr", "--disable_ocr", "--disable-ocr"):
+            disable_ocr = True
+        elif p_str in ("-force_cpu", "--force_cpu", "--force-cpu"):
+            force_cpu = True
+        elif p_str in ("-ignore_errors", "--ignore_errors", "--ignore-errors"):
+            ignore_errors = True
+        elif p_str in ("-no_cache", "--no_cache", "--no-cache"):
+            no_cache = True
+        elif p_str in ("-unzip", "--unzip"):
+            unzip = True
+        elif p_str in ("-legacy_html", "--legacy_html", "--legacy-html"):
+            legacy_html = True
+        elif p_str.startswith("-") and not Path(p_str).exists():
+            logger.warning(f"Unrecognized flag: {p_str}")
+        else:
+            filtered_paths.append(p)
+
+    # Reconstruct unquoted space-split paths (e.g. ['manga/チェンソーマン', 'v24'])
+    resolved_paths = []
+    i = 0
+    while i < len(filtered_paths):
+        curr = str(filtered_paths[i])
+        curr_path = Path(curr).expanduser().absolute()
+        if curr_path.exists():
+            resolved_paths.append(curr_path)
+            i += 1
+            continue
+
+        joined = curr
+        found_match = False
+        for j in range(i + 1, len(filtered_paths)):
+            joined += " " + str(filtered_paths[j])
+            joined_path = Path(joined).expanduser().absolute()
+            if joined_path.exists():
+                resolved_paths.append(joined_path)
+                i = j + 1
+                found_match = True
+                break
+
+        if not found_match:
+            resolved_paths.append(curr_path)
+            i += 1
+
+    paths_ = []
+    for path_normalized in resolved_paths:
         try:
             path_valid = path_normalized.exists()
         except OSError:
@@ -115,7 +200,7 @@ def run(
             paths_.append(path_normalized)
         else:
             logger.error(f"Invalid path: {path_normalized}")
-            return
+            return 0
 
     paths = paths_
 
@@ -182,24 +267,19 @@ def run(
                     generate_legacy_html(volume, as_one_file=as_one_file, ignore_errors=ignore_errors)
 
                 # Single-file / archive bundling
-                is_archive = volume.path_in.is_file() and volume.path_in.suffix.lower() in {".cbz", ".zip"}
-                if is_archive:
-                    embed_mokuro_in_archive(volume.path_in, volume.path_mokuro)
-                    logger.info(f"Embedded OCR metadata inside {volume.path_in}")
-                    if single_file:
-                        if volume.path_mokuro.is_file():
-                            volume.path_mokuro.unlink()
-                        if volume.path_ocr_cache.is_dir():
-                            shutil.rmtree(volume.path_ocr_cache, ignore_errors=True)
+                archive_paths = [p for p in volume.paths_in if p.is_file() and p.suffix.lower() in {".cbz", ".zip"}]
+                if archive_paths:
+                    orig_archive = archive_paths[0]
+                    embed_mokuro_in_archive(orig_archive, volume.path_mokuro)
+                    logger.info(f"Embedded OCR metadata inside {orig_archive}")
+                    if single_file or bundle:
+                        _cleanup_volume_mess(volume, remove_source_dir=False)
 
                 elif (single_file or bundle) and volume.path_in.is_dir():
                     cbz_path = bundle_to_cbz(volume.path_in, volume.path_mokuro)
                     logger.info(f"Bundled volume into single file: {cbz_path}")
-                    if single_file:
-                        if volume.path_mokuro.is_file():
-                            volume.path_mokuro.unlink()
-                        if volume.path_ocr_cache.is_dir():
-                            shutil.rmtree(volume.path_ocr_cache, ignore_errors=True)
+                    if cbz_path.is_file() and cbz_path.stat().st_size > 0:
+                        _cleanup_volume_mess(volume, remove_source_dir=not keep_source)
 
             except Exception:
                 logger.exception(f"Error while processing {volume.path_in}")
@@ -208,6 +288,32 @@ def run(
 
         logger.info(f"Processed successfully: {num_sucessful}/{len(vc)}")
         return num_sucessful
+
+
+def _cleanup_volume_mess(volume: Volume, remove_source_dir: bool = False):
+    """Remove loose .mokuro file, _ocr cache, and optionally source directory."""
+    if volume.path_mokuro.is_file():
+        try:
+            volume.path_mokuro.unlink()
+            logger.debug(f"Removed loose metadata: {volume.path_mokuro}")
+        except OSError:
+            pass
+
+    if volume.path_ocr_cache.is_dir():
+        shutil.rmtree(volume.path_ocr_cache, ignore_errors=True)
+        logger.debug(f"Removed OCR cache: {volume.path_ocr_cache}")
+
+    parent_ocr = volume.path_ocr_cache.parent
+    if parent_ocr.is_dir():
+        try:
+            if not any(parent_ocr.iterdir()):
+                parent_ocr.rmdir()
+        except OSError:
+            pass
+
+    if remove_source_dir and volume.path_in.is_dir():
+        shutil.rmtree(volume.path_in, ignore_errors=True)
+        logger.info(f"Cleaned up source scans folder: {volume.path_in}")
 
 
 if __name__ == "__main__":

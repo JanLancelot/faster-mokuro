@@ -67,23 +67,36 @@ def unzip(path_src: Path, path_dst: Path, correct_duplicated_root=True):
                     extracted_dir.rmdir()
 
 
-def embed_mokuro_in_archive(archive_path: Path, mokuro_path: Path):
+def embed_mokuro_in_archive(archive_path: Path, mokuro_path: Path, entry_name: str = "index.mokuro"):
     """
     Embed the .mokuro metadata directly into a .cbz / .zip archive.
-    Writes both the named .mokuro file and index.mokuro for maximum reader compatibility.
+    Replaces any existing .mokuro metadata in the archive cleanly.
     """
     if not archive_path.is_file() or not mokuro_path.is_file():
         return
 
     mokuro_bytes = mokuro_path.read_bytes()
     mokuro_name = mokuro_path.name
+    temp_archive = archive_path.with_name(f".{archive_path.name}.tmp")
 
-    with zipfile.ZipFile(archive_path, "a") as zf:
-        existing_names = set(zf.namelist())
-        if mokuro_name not in existing_names:
-            zf.writestr(mokuro_name, mokuro_bytes)
-        if "index.mokuro" not in existing_names and mokuro_name != "index.mokuro":
-            zf.writestr("index.mokuro", mokuro_bytes)
+    names_to_replace = {entry_name, mokuro_name, "index.mokuro", "_ocr.mokuro"}
+
+    try:
+        with zipfile.ZipFile(archive_path, "r") as zin:
+            with zipfile.ZipFile(temp_archive, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+                for item in zin.infolist():
+                    if item.filename not in names_to_replace:
+                        zout.writestr(item, zin.read(item.filename))
+
+                zout.writestr(entry_name, mokuro_bytes)
+                if mokuro_name != entry_name:
+                    zout.writestr(mokuro_name, mokuro_bytes)
+
+        temp_archive.replace(archive_path)
+    except Exception:
+        if temp_archive.exists():
+            temp_archive.unlink()
+        raise
 
 
 def bundle_to_cbz(dir_path: Path, mokuro_path: Path, dst_path: Path = None) -> Path:
@@ -95,16 +108,24 @@ def bundle_to_cbz(dir_path: Path, mokuro_path: Path, dst_path: Path = None) -> P
 
     from natsort import natsorted
 
-    with zipfile.ZipFile(dst_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for f_path in natsorted(dir_path.rglob("*")):
-            if f_path.is_file() and f_path.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp", ".avif"):
-                rel = f_path.relative_to(dir_path)
-                zf.write(f_path, rel)
+    temp_dst = dst_path.with_name(f".{dst_path.name}.tmp")
+    try:
+        with zipfile.ZipFile(temp_dst, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for f_path in natsorted(dir_path.rglob("*")):
+                if f_path.is_file() and f_path.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp", ".avif"):
+                    rel = f_path.relative_to(dir_path)
+                    zf.write(f_path, rel)
 
-        if mokuro_path.is_file():
-            mokuro_bytes = mokuro_path.read_bytes()
-            zf.writestr(mokuro_path.name, mokuro_bytes)
-            if mokuro_path.name != "index.mokuro":
+            if mokuro_path.is_file():
+                mokuro_bytes = mokuro_path.read_bytes()
                 zf.writestr("index.mokuro", mokuro_bytes)
+                if mokuro_path.name != "index.mokuro":
+                    zf.writestr(mokuro_path.name, mokuro_bytes)
+
+        temp_dst.replace(dst_path)
+    except Exception:
+        if temp_dst.exists():
+            temp_dst.unlink()
+        raise
 
     return dst_path
