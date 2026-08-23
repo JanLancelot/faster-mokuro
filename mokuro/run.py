@@ -1,3 +1,4 @@
+import shutil
 from collections import Counter
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -9,6 +10,7 @@ from loguru import logger
 from mokuro import MokuroGenerator
 from mokuro import __version__
 from mokuro.legacy.overlay_generator import generate_legacy_html
+from mokuro.utils import embed_mokuro_in_archive, bundle_to_cbz
 from mokuro.volume import VolumeCollection
 
 
@@ -26,6 +28,8 @@ def run(
     as_one_file: bool = True,
     ocr_batch_size: int = 16,
     version: bool = False,
+    single_file: bool = False,
+    bundle: bool = False,
     install_shortcut: bool = False,
     uninstall_shortcut: bool = False,
     notify: bool = False,
@@ -47,6 +51,8 @@ def run(
         as_one_file: Applies only to legacy HTML. If False, generate separate CSS and JS files instead of embedding them in the HTML file.
         ocr_batch_size: Batch size for OCR inference.
         version: Print the version of mokuro and exit.
+        single_file: Output a single self-contained .cbz archive with embedded .mokuro (removes loose metadata/cache).
+        bundle: Bundle directory inputs into a single-file .cbz archive with embedded .mokuro.
         install_shortcut: Install right-click context menu / Quick Action shortcuts in Finder / Explorer.
         uninstall_shortcut: Remove right-click context menu / Quick Action shortcuts.
         notify: Show desktop notifications on start and completion.
@@ -174,6 +180,26 @@ def run(
                 mg.process_volume(volume, ignore_errors=ignore_errors, no_cache=no_cache)
                 if legacy_html:
                     generate_legacy_html(volume, as_one_file=as_one_file, ignore_errors=ignore_errors)
+
+                # Single-file / archive bundling
+                is_archive = volume.path_in.is_file() and volume.path_in.suffix.lower() in {".cbz", ".zip"}
+                if is_archive:
+                    embed_mokuro_in_archive(volume.path_in, volume.path_mokuro)
+                    logger.info(f"Embedded OCR metadata inside {volume.path_in}")
+                    if single_file:
+                        if volume.path_mokuro.is_file():
+                            volume.path_mokuro.unlink()
+                        if volume.path_ocr_cache.is_dir():
+                            shutil.rmtree(volume.path_ocr_cache, ignore_errors=True)
+
+                elif (single_file or bundle) and volume.path_in.is_dir():
+                    cbz_path = bundle_to_cbz(volume.path_in, volume.path_mokuro)
+                    logger.info(f"Bundled volume into single file: {cbz_path}")
+                    if single_file:
+                        if volume.path_mokuro.is_file():
+                            volume.path_mokuro.unlink()
+                        if volume.path_ocr_cache.is_dir():
+                            shutil.rmtree(volume.path_ocr_cache, ignore_errors=True)
 
             except Exception:
                 logger.exception(f"Error while processing {volume.path_in}")

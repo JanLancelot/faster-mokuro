@@ -95,11 +95,28 @@ To uninstall:
 mokuro --uninstall_shortcut
 ```
 
+### Single-File Output (.cbz)
+
+To keep your manga folder clean and have a single, self-contained file containing both scans and OCR data:
+
+- **From an existing `.cbz` or `.zip`:**
+  Mokuro automatically embeds the `.mokuro` metadata directly into the archive. To remove loose files and leave only the single `.cbz`:
+  ```bash
+  mokuro --single_file vol1.cbz
+  ```
+- **From a folder:**
+  Package a scanned folder and its OCR results directly into a single `.cbz` file:
+  ```bash
+  mokuro --bundle /path/to/manga/vol1
+  ```
+
 ---
 
 ### Options
 
 ```
+--single_file: Output a single self-contained .cbz archive with embedded .mokuro (cleans up loose files).
+--bundle: Bundle directory inputs into a single-file .cbz archive with embedded .mokuro.
 --install_shortcut: Install right-click context menu / Quick Action shortcuts in Finder / Explorer.
 --uninstall_shortcut: Remove right-click context menu / Quick Action shortcuts.
 --notify: Run in background and show desktop notifications on start and completion.
