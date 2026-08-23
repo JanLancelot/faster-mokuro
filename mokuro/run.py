@@ -26,6 +26,9 @@ def run(
     as_one_file: bool = True,
     ocr_batch_size: int = 16,
     version: bool = False,
+    install_shortcut: bool = False,
+    uninstall_shortcut: bool = False,
+    notify: bool = False,
 ):
     """
     Process manga volumes with mokuro.
@@ -44,10 +47,39 @@ def run(
         as_one_file: Applies only to legacy HTML. If False, generate separate CSS and JS files instead of embedding them in the HTML file.
         ocr_batch_size: Batch size for OCR inference.
         version: Print the version of mokuro and exit.
+        install_shortcut: Install right-click context menu / Quick Action shortcuts in Finder / Explorer.
+        uninstall_shortcut: Remove right-click context menu / Quick Action shortcuts.
+        notify: Show desktop notifications on start and completion.
     """
 
     if version:
         print(f"{__version__}")
+        return
+
+    if install_shortcut:
+        from mokuro.integration import install_shortcuts
+        install_shortcuts()
+        return
+
+    if uninstall_shortcut:
+        from mokuro.integration import uninstall_shortcuts
+        uninstall_shortcuts()
+        return
+
+    if notify:
+        from mokuro.integration import run_with_notifications
+        run_with_notifications(
+            *paths,
+            parent_dir=parent_dir,
+            pretrained_model_name_or_path=pretrained_model_name_or_path,
+            force_cpu=force_cpu,
+            disable_ocr=disable_ocr,
+            no_cache=no_cache,
+            unzip=unzip,
+            legacy_html=legacy_html,
+            as_one_file=as_one_file,
+            ocr_batch_size=ocr_batch_size,
+        )
         return
 
     if disable_ocr:
@@ -149,6 +181,7 @@ def run(
                 num_sucessful += 1
 
         logger.info(f"Processed successfully: {num_sucessful}/{len(vc)}")
+        return num_sucessful
 
 
 if __name__ == "__main__":

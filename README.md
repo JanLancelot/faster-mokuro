@@ -74,9 +74,35 @@ mokuro /path/to/manga/vol1 /path/to/manga/vol2 /path/to/manga/vol3
 mokuro --parent_dir manga_title/
 ```
 
+### One-Click OS Right-Click Integration (Finder / Explorer)
+
+Process manga without touching the terminal:
+
+1. **Install shortcut once:**
+   ```bash
+   mokuro --install_shortcut
+   ```
+
+2. **Process your manga:**
+   - **macOS**: Right-click any manga folder, `.cbz`, or `.zip` file in Finder ➔ **Quick Actions** ➔ **Process with Mokuro**.
+   - **Windows**: Right-click any manga folder, `.cbz`, or `.zip` file ➔ **Process with Mokuro**.
+   - **Linux (Nautilus / Nemo)**: Right-click ➔ **Scripts** ➔ **Process with Mokuro**.
+
+Mokuro will process the volume in the background and send a native desktop notification when it is finished.
+
+To uninstall:
+```bash
+mokuro --uninstall_shortcut
+```
+
+---
+
 ### Options
 
 ```
+--install_shortcut: Install right-click context menu / Quick Action shortcuts in Finder / Explorer.
+--uninstall_shortcut: Remove right-click context menu / Quick Action shortcuts.
+--notify: Run in background and show desktop notifications on start and completion.
 --pretrained_model_name_or_path: Name or path of the manga-ocr model.
 --force_cpu: Force the use of CPU even if CUDA/MPS is available.
 --disable_confirmation: Disable confirmation prompt.
