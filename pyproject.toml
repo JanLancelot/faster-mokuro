@@ -1,9 +1,10 @@
 [project]
-name = "mokuro"
+name = "faster-mokuro"
 authors = [
+    {name = "Jan Lancelot", email = "janlancelot@users.noreply.github.com"},
     {name = "Maciej Budyś", email = "kha-white@mail.com"},
 ]
-description = "Browser reader for manga with selectable text"
+description = "Fast manga reader OCR and bundling with batched inference & Apple Silicon MPS acceleration"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}
@@ -40,7 +41,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/kha-white/mokuro"
+Homepage = "https://github.com/JanLancelot/faster-mokuro"
+Repository = "https://github.com/JanLancelot/faster-mokuro"
 
 [build-system]
 requires = ["setuptools >= 61.0.0", "setuptools_scm"]
@@ -62,3 +64,4 @@ extend-exclude = ["comic_text_detector", "notebooks"]
 
 [project.scripts]
 mokuro = "mokuro.__main__:main"
+faster-mokuro = "mokuro.__main__:main"

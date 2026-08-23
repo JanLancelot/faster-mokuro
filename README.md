@@ -27,11 +27,31 @@ https://user-images.githubusercontent.com/22717958/164993274-3e8d1650-9be3-457d-
 Requires Python 3.10 or newer.
 
 ```bash
+# 1-line install
+pip install git+https://github.com/JanLancelot/faster-mokuro.git
+```
+
+Or using modern package runners (`uv` / `pipx`):
+```bash
+uv tool install git+https://github.com/JanLancelot/faster-mokuro.git
+# or
+pipx install git+https://github.com/JanLancelot/faster-mokuro.git
+```
+
+Or from local source:
+```bash
 git clone https://github.com/JanLancelot/faster-mokuro.git
 cd faster-mokuro
-git submodule update --init --recursive
 pip install -e .
 ```
+
+### Commands & Switching
+
+- Both `mokuro` and `faster-mokuro` commands are available.
+- If you ever want to switch back to the original `mokuro`:
+  ```bash
+  pip uninstall faster-mokuro && pip install mokuro
+  ```
 
 ### Hardware Acceleration
 - **Apple Silicon (macOS)**: Supported natively out of the box via PyTorch MPS backend.
