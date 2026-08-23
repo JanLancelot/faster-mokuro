@@ -3,13 +3,14 @@ import numpy as np
 from PIL import Image
 from loguru import logger
 from scipy.signal.windows import gaussian
+import torch
 
 from comic_text_detector.inference import TextDetector
 from manga_ocr import MangaOcr
+from manga_ocr.ocr import post_process
 from mokuro import __version__
 from mokuro.cache import cache
 from mokuro.utils import imread
-import torch
 
 
 class MangaPageOcr:
@@ -23,35 +24,65 @@ class MangaPageOcr:
         max_ratio_hor=8,
         anchor_window=2,
         disable_ocr=False,
+        ocr_batch_size=16,
     ):
         self.text_height = text_height
         self.max_ratio_vert = max_ratio_vert
         self.max_ratio_hor = max_ratio_hor
         self.anchor_window = anchor_window
         self.disable_ocr = disable_ocr
+        self.ocr_batch_size = ocr_batch_size
 
         if not self.disable_ocr:
             if not force_cpu and torch.cuda.is_available():
-                device = "cuda"
+                self.device = "cuda"
             elif not force_cpu and torch.backends.mps.is_available():
-                device = "mps"
+                self.device = "mps"
             else:
-                device = "cpu"
-            logger.info(f"Initializing text detector, using device {device}")
+                self.device = "cpu"
+            logger.info(f"Initializing text detector, using device {self.device}")
             self.text_detector = TextDetector(
-                model_path=cache.comic_text_detector, input_size=detector_input_size, device=device, act="leaky"
+                model_path=cache.comic_text_detector, input_size=detector_input_size, device=self.device, act="leaky"
             )
+
             self.mocr = MangaOcr(pretrained_model_name_or_path, force_cpu)
 
-    def __call__(self, img_path):
-        img = imread(img_path)
+    def _ocr_crops(self, pil_crops):
+        if not pil_crops:
+            return []
+
+        results = []
+        for i in range(0, len(pil_crops), self.ocr_batch_size):
+            batch = pil_crops[i : i + self.ocr_batch_size]
+            pixel_values = self.mocr.processor(batch, return_tensors="pt").pixel_values.to(self.mocr.model.device)
+            with torch.inference_mode():
+                tokens = self.mocr.model.generate(
+                    pixel_values,
+                    max_length=96,
+                    num_beams=4,
+                ).cpu()
+                decoded = self.mocr.tokenizer.batch_decode(tokens, skip_special_tokens=True)
+                results.extend([post_process(t) for t in decoded])
+        return results
+
+    def __call__(self, img_or_path):
+        if isinstance(img_or_path, np.ndarray):
+            img = img_or_path
+        else:
+            img = imread(img_or_path)
+
         H, W, *_ = img.shape
         result = {"version": __version__, "img_width": W, "img_height": H, "blocks": []}
 
         if self.disable_ocr:
             return result
 
-        mask, mask_refined, blk_list = self.text_detector(img, refine_mode=1, keep_undetected_mask=True)
+        with torch.inference_mode():
+            mask, mask_refined, blk_list = self.text_detector(img, refine_mode=1, keep_undetected_mask=True)
+
+        all_crops = []
+        crop_routes = []
+
         for blk_idx, blk in enumerate(blk_list):
             result_blk = {
                 "box": list(blk.xyxy),
@@ -61,12 +92,9 @@ class MangaPageOcr:
                 "lines": [],
             }
 
-            for line_idx, line in enumerate(blk.lines_array()):
-                if blk.vertical:
-                    max_ratio = self.max_ratio_vert
-                else:
-                    max_ratio = self.max_ratio_hor
+            max_ratio = self.max_ratio_vert if blk.vertical else self.max_ratio_hor
 
+            for line_idx, line in enumerate(blk.lines_array()):
                 line_crops, cut_points = self.split_into_chunks(
                     img,
                     mask_refined,
@@ -77,16 +105,21 @@ class MangaPageOcr:
                     anchor_window=self.anchor_window,
                 )
 
-                line_text = ""
+                result_blk["lines_coords"].append(line.tolist())
+                result_blk["lines"].append("")
+
                 for line_crop in line_crops:
                     if blk.vertical:
                         line_crop = cv2.rotate(line_crop, cv2.ROTATE_90_CLOCKWISE)
-                    line_text += self.mocr(Image.fromarray(line_crop))
-
-                result_blk["lines_coords"].append(line.tolist())
-                result_blk["lines"].append(line_text)
+                    all_crops.append(Image.fromarray(line_crop).convert("L").convert("RGB"))
+                    crop_routes.append((blk_idx, line_idx))
 
             result["blocks"].append(result_blk)
+
+        if all_crops:
+            ocr_texts = self._ocr_crops(all_crops)
+            for (blk_idx, line_idx), text in zip(crop_routes, ocr_texts):
+                result["blocks"][blk_idx]["lines"][line_idx] += text
 
         return result
 

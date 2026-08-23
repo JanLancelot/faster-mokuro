@@ -24,6 +24,7 @@ def run(
     unzip: bool = False,
     legacy_html: bool = True,
     as_one_file: bool = True,
+    ocr_batch_size: int = 16,
     version: bool = False,
 ):
     """
@@ -41,6 +42,7 @@ def run(
         unzip: Extract volumes in zip/cbz format in their original location.
         legacy_html: Enable legacy HTML output. If True, acts as if --unzip is True.
         as_one_file: Applies only to legacy HTML. If False, generate separate CSS and JS files instead of embedding them in the HTML file.
+        ocr_batch_size: Batch size for OCR inference.
         version: Print the version of mokuro and exit.
     """
 
@@ -117,7 +119,10 @@ def run(
             return
 
     mg = MokuroGenerator(
-        pretrained_model_name_or_path=pretrained_model_name_or_path, force_cpu=force_cpu, disable_ocr=disable_ocr
+        pretrained_model_name_or_path=pretrained_model_name_or_path,
+        force_cpu=force_cpu,
+        disable_ocr=disable_ocr,
+        ocr_batch_size=ocr_batch_size,
     )
 
     with TemporaryDirectory() as tmp_dir:
