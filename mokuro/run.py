@@ -24,7 +24,7 @@ def run(
     ignore_errors: bool = False,
     no_cache: bool = False,
     unzip: bool = False,
-    legacy_html: bool = True,
+    legacy_html: bool = False,
     as_one_file: bool = True,
     ocr_batch_size: int = 16,
     version: bool = False,
@@ -47,7 +47,7 @@ def run(
         ignore_errors: Continue processing volumes even if an error occurs.
         no_cache: Do not use cached OCR results from previous runs (_ocr directories).
         unzip: Extract volumes in zip/cbz format in their original location.
-        legacy_html: Enable legacy HTML output. If True, acts as if --unzip is True.
+        legacy_html: Enable legacy HTML output (default: False). If True, acts as if --unzip is True.
         as_one_file: Applies only to legacy HTML. If False, generate separate CSS and JS files instead of embedding them in the HTML file.
         ocr_batch_size: Batch size for OCR inference.
         version: Print the version of mokuro and exit.

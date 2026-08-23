@@ -128,7 +128,7 @@ To keep your manga folder clean and have a single, self-contained file containin
 --no_cache: Do not use cached OCR results from previous runs.
 --unzip: Extract volumes in zip/cbz format in their original location.
 --ocr_batch_size: Batch size for OCR inference on GPU/MPS (default: 16).
---legacy_html: Enable legacy HTML output (default: True).
+--legacy_html: Enable legacy HTML output (default: False).
 --as_one_file: For legacy HTML, embed CSS/JS inside HTML.
 --version: Print version and exit.
 ```
